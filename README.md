@@ -222,20 +222,59 @@ hey -z 10m -c 1000 -q 1 -t 0 -m POST \
 
 ### Performance Test Results
 
-The following results were obtained under controlled testing conditions:
+Tested on MB Pro 13" 2020 (M1)
 
-| Metric                 | Value |
-| ---------------------- | ----- |
-| **Configuration**      | _TBD_ |
-| **Test Duration**      | _TBD_ |
-| **Total Transfers**    | _TBD_ |
-| **Average RPS**        | _TBD_ |
-| **Peak RPS**           | _TBD_ |
-| **Average Latency**    | _TBD_ |
-| **P95 Latency**        | _TBD_ |
-| **P99 Latency**        | _TBD_ |
-| **Success Rate**       | _TBD_ |
-| **RPC Endpoints Used** | _TBD_ |
+```bash
+hey -z 10m -c 1500 -q 5 -t 0 -m POST \
+  -H "Content-Type: application/json" \
+  -d '{"receiver_id":"supafleet2.testnet","amount":"1","memo":"load test transfer"}' \
+  http://localhost:3030/transfer
+```
+
+```
+Summary:
+  Total:	603.6083 secs
+  Slowest:	23.9270 secs
+  Fastest:	1.6283 secs
+  Average:	5.5487 secs
+  Requests/sec:	269.7262 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+  Total data:	9433896 bytes
+  Size/request:	57 bytes
+
+Response time histogram:
+  1.628 [1]	|
+  3.858 [43953]	|■■■■■■■■■■■■■■■■■■■■■■■■■■
+  6.088 [68671]	|■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  8.318 [31415]	|■■■■■■■■■■■■■■■■■■
+  10.548 [10092]	|■■■■■■
+  12.778 [4945]	|■■■
+  15.008 [1678]	|■
+  17.237 [986]	|■
+  19.467 [819]	|
+  21.697 [149]	|
+  23.927 [100]	|
+
+
+Latency distribution:
+  10% in 2.9293 secs
+  25% in 3.7691 secs
+  50% in 4.8579 secs
+  75% in 6.6590 secs
+  90% in 8.6556 secs
+  95% in 10.7441 secs
+  99% in 15.5713 secs
+
+Details (average, fastest, slowest):
+  DNS+dialup:	0.0003 secs, 1.6283 secs, 23.9270 secs
+  DNS-lookup:	0.0001 secs, 0.0000 secs, 0.0325 secs
+  req write:	0.0000 secs, 0.0000 secs, 0.0266 secs
+  resp wait:	5.5483 secs, 1.6283 secs, 23.9268 secs
+  resp read:	0.0000 secs, 0.0000 secs, 0.0152 secs
+
+Status code distribution:
+  [200]	162809 responses
+```
 
 Performance depends on:
 
