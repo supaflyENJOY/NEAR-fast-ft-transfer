@@ -1,0 +1,34 @@
+# Build artifacts
+target/
+Cargo.lock
+
+# Git
+.git/
+.gitignore
+
+# Environment
+.env
+.env.*
+
+# Documentation
+*.md
+docs/
+
+# Tests
+tests/
+res/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# CI/CD
+.github/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
