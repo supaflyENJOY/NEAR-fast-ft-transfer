@@ -62,7 +62,7 @@ impl Client {
         &self.rpc_url
     }
 
-    /// Make a query RPC call with exponential backoff retry logic
+    /// Make a JSON RPC call with exponential backoff retry logic
     ///
     /// This method automatically retries failed requests under the following conditions:
     /// - HTTP 403 (Forbidden) status codes
@@ -71,7 +71,7 @@ impl Client {
     /// - Other transient HTTP errors (5xx status codes, connection issues, timeouts)
     ///
     /// Retry behavior:
-    /// - Maximum 50 retry attempts
+    /// - Maximum 15 retry attempts
     /// - Exponential backoff starting at 100ms, capped at 10 seconds
     /// - Example delays: 100ms, 200ms, 400ms, 800ms, 1600ms, ... doubling each time until
     ///   reaching 10s, after which all remaining retries use the 10s cap (up to 15 attempts)
