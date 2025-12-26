@@ -71,112 +71,48 @@ impl Client {
     /// - Other transient HTTP errors (5xx status codes, connection issues, timeouts)
     ///
     /// Retry behavior:
-    /// - Maximum 5 retry attempts
-    /// - Exponential backoff starting at 100ms, capped at 30 seconds
-    /// - Delays: 100ms, 200ms, 400ms, 800ms, 1600ms (then capped at 30s)
-    async fn call_query_with_retry(&self, request: RpcQueryRequest) -> Result<RpcQueryResponse> {
-        const MAX_RETRIES: u32 = 50;
-        const BASE_DELAY_MS: u64 = 100;
-        const MAX_DELAY_MS: u64 = 30000; // 30 seconds
-
-        let mut attempt = 0;
-
-        loop {
-            match self.jsonrpc_client.call(&request).await {
-                Ok(response) => return Ok(response),
-                Err(e) => {
-                    attempt += 1;
-
-                    if attempt >= MAX_RETRIES || !self.should_retry_error(&e) {
-                        return Err(e.into());
-                    }
-
-                    let delay_ms =
-                        std::cmp::min(BASE_DELAY_MS * 2_u64.pow(attempt - 1), MAX_DELAY_MS);
-
-                    warn!(
-                        "RPC call failed (attempt {}/{}), retrying in {}ms. Error: {}",
-                        attempt, MAX_RETRIES, delay_ms, e
-                    );
-
-                    sleep(Duration::from_millis(delay_ms)).await;
-                }
-            }
-        }
-    }
-
-    /// Make a transaction broadcast RPC call with exponential backoff retry logic
-    ///
-    /// Similar to query calls, this method provides automatic retry functionality
-    /// for transaction broadcasting with the same retry conditions and backoff strategy.
-    async fn call_broadcast_with_retry(
+    /// - Maximum 50 retry attempts
+    /// - Exponential backoff starting at 100ms, capped at 10 seconds
+    /// - Example delays: 100ms, 200ms, 400ms, 800ms, 1600ms, ... doubling each time until
+    ///   reaching 10s, after which all remaining retries use the 10s cap (up to 15 attempts)
+    pub async fn call<M>(
         &self,
-        request: RpcBroadcastTxCommitRequest,
-    ) -> Result<FinalExecutionOutcomeView> {
-        const MAX_RETRIES: u32 = 50;
+        method: M,
+    ) -> near_jsonrpc_client::MethodCallResult<M::Response, M::Error>
+    where
+        M: near_jsonrpc_client::methods::RpcMethod,
+    {
+        const MAX_RETRIES: u32 = 15;
         const BASE_DELAY_MS: u64 = 100;
-        const MAX_DELAY_MS: u64 = 30000; // 30 seconds
+        const MAX_DELAY_MS: u64 = 10000; // 10 seconds
 
         let mut attempt = 0;
 
         loop {
-            match self.jsonrpc_client.call(&request).await {
+            match self.jsonrpc_client.call(&method).await {
                 Ok(response) => return Ok(response),
-                Err(e) => {
+                Err(err) if err.handler_error().is_some() => {
+                    return Err(err.into());
+                }
+                Err(err) => {
                     attempt += 1;
 
-                    if attempt >= MAX_RETRIES || !self.should_retry_error(&e) {
-                        return Err(e.into());
+                    if attempt >= MAX_RETRIES {
+                        return Err(err.into());
                     }
 
                     let delay_ms =
                         std::cmp::min(BASE_DELAY_MS * 2_u64.pow(attempt - 1), MAX_DELAY_MS);
 
                     warn!(
-                        "RPC call failed (attempt {}/{}), retrying in {}ms. Error: {}",
-                        attempt, MAX_RETRIES, delay_ms, e
+                        "RPC call failed (attempt {}/{}), retrying in {}ms",
+                        attempt, MAX_RETRIES, delay_ms
                     );
 
                     sleep(Duration::from_millis(delay_ms)).await;
                 }
             }
         }
-    }
-
-    /// Determine if an error should trigger a retry
-    ///
-    /// Returns true for the following error conditions:
-    /// - Rate limit errors (any message containing "rate limit" or "exceeded the rate limit")
-    /// - HTTP 403 (Forbidden)
-    /// - HTTP 429 (Too Many Requests)
-    /// - HTTP 5xx server errors (500, 502, 503, 504)
-    /// - Connection and timeout errors
-    fn should_retry_error(&self, error: &dyn std::fmt::Display) -> bool {
-        let error_str = error.to_string().to_lowercase();
-
-        // Check for rate limit errors
-        if error_str.contains("rate limit")
-            || error_str.contains("exceeded the rate limit")
-            || error_str.contains("too many requests")
-            || error_str.contains("client has exceeded the rate limit")
-        {
-            return true;
-        }
-
-        // Check for HTTP status code errors that might be transient
-        if error_str.contains("status code: 403")
-            || error_str.contains("status code: 429")
-            || error_str.contains("status code: 500")
-            || error_str.contains("status code: 502")
-            || error_str.contains("status code: 503")
-            || error_str.contains("status code: 504")
-            || error_str.contains("connection")
-            || error_str.contains("timeout")
-        {
-            return true;
-        }
-
-        false
     }
 
     async fn get_access_key_query(&self) -> Result<RpcQueryResponse> {
@@ -188,7 +124,7 @@ impl Client {
             },
         };
 
-        self.call_query_with_retry(rpc_request).await
+        self.call(rpc_request).await.map_err(Into::into)
     }
 
     /// Check if an account exists on the blockchain
@@ -200,14 +136,14 @@ impl Client {
             },
         };
 
-        match self.call_query_with_retry(rpc_request).await {
+        match self.call(rpc_request).await {
             Ok(_) => Ok(true),
             Err(e) => {
                 let error_str = e.to_string();
                 if error_str.contains("does not exist") {
                     Ok(false)
                 } else {
-                    Err(e)
+                    Err(e.into())
                 }
             }
         }
@@ -230,7 +166,7 @@ impl Client {
             },
         };
 
-        match self.call_query_with_retry(rpc_request).await {
+        match self.call(rpc_request).await {
             Ok(response) => {
                 let QueryResponseKind::CallResult(result) = response.kind else {
                     anyhow::bail!("Unexpected query response kind");
@@ -244,7 +180,7 @@ impl Client {
                 if error_str.contains("MethodNotFound") || error_str.contains("does not exist") {
                     Ok(false)
                 } else {
-                    Err(e)
+                    Err(e.into())
                 }
             }
         }
@@ -276,8 +212,7 @@ impl Client {
                 .sign(&near_crypto::Signer::InMemory(self.signer.clone())),
         };
 
-        let outcome = self.call_broadcast_with_retry(request).await?;
-        Ok(outcome)
+        self.call(request).await.map_err(Into::into)
     }
 }
 
