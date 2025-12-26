@@ -129,6 +129,23 @@ pub fn create_test_config_with_auto_storage(
     ft_contract: &AccountId,
     auto_storage_deposit: bool,
 ) -> Result<Config> {
+    create_test_config_with_validation(
+        sandbox_url,
+        relayer_account,
+        ft_contract,
+        auto_storage_deposit,
+        true,
+    )
+}
+
+/// Create a Config for testing with configurable validation settings
+pub fn create_test_config_with_validation(
+    sandbox_url: &str,
+    relayer_account: &Account,
+    ft_contract: &AccountId,
+    auto_storage_deposit: bool,
+    ensure_receiver_account_exists: bool,
+) -> Result<Config> {
     Ok(Config {
         rpc_urls: vec![sandbox_url.to_string()],
         account_id: relayer_account.id().clone(),
@@ -143,6 +160,7 @@ pub fn create_test_config_with_auto_storage(
         auto_storage_deposit,
         max_retry_attempts: 3,
         api_port: 0, // Use random available port
+        ensure_receiver_account_exists,
     })
 }
 

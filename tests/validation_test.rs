@@ -1,7 +1,7 @@
 mod common;
 
 use anyhow::Result;
-use fast_ft_transfer::TransferRequest;
+use fast_ft_transfer::{TransferRequest, TransferResponse};
 use near_workspaces::AccountId;
 use tokio::time::Duration;
 
@@ -94,6 +94,46 @@ async fn test_cached_validation() -> Result<()> {
 
     assert_eq!(final_balance, "300000000000000000");
     eprintln!("Successfully validated cache reuse for repeated transfers");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_transfer_to_nonexistent_account_validation_disabled() -> Result<()> {
+    let ctx = common::setup_test_environment().await?;
+
+    // Create config with account validation disabled
+    let config = common::create_test_config_with_validation(
+        &ctx.worker.rpc_addr(),
+        &ctx.relayer,
+        ctx.ft_contract.id(),
+        true,  // auto_storage_deposit
+        false, // ensure_receiver_account_exists
+    )?;
+
+    let (server_url, _batcher_handle) = common::start_api_server(config).await?;
+
+    // Try to transfer to a non-existent account (should succeed now)
+    let client = reqwest::Client::new();
+    let nonexistent_account: AccountId = "this-account-does-not-exist.test".parse()?;
+
+    let transfer_request = TransferRequest {
+        receiver_id: nonexistent_account.clone(),
+        amount: "1000000000000000000".to_string(),
+        memo: Some("Should succeed when validation disabled".to_string()),
+    };
+
+    let response = client
+        .post(format!("{server_url}/transfer"))
+        .json(&transfer_request)
+        .send()
+        .await?;
+
+    // Should succeed (200) when account validation is disabled
+    assert_eq!(response.status(), 200);
+
+    let transfer_response: TransferResponse = response.json().await?;
+    assert!(!transfer_response.tx_hash.is_empty());
 
     Ok(())
 }

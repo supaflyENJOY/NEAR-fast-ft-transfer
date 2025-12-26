@@ -5,7 +5,8 @@ use anyhow::Result;
 #[tokio::test]
 async fn test_health_endpoint() -> Result<()> {
     let ctx = common::setup_test_environment().await?;
-    let config = common::create_test_config(&ctx.worker.rpc_addr(), &ctx.relayer, ctx.ft_contract.id())?;
+    let config =
+        common::create_test_config(&ctx.worker.rpc_addr(), &ctx.relayer, ctx.ft_contract.id())?;
 
     let (server_url, _batcher_handle) = common::start_api_server(config).await?;
 
