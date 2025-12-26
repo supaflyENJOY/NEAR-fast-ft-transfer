@@ -1,6 +1,6 @@
 # NEAR FT Transfer API Service
 
-A high-performance REST API service for batching and distributing NEAR Protocol fungible tokens (FT). Designed for token launches and airdrops requiring 100+ transfers per second.
+A high-performance REST API service for batching and distributing NEAR Protocol fungible tokens (FT). Designed as an efficient internal component for linkdrop systems, token launches, and airdrops requiring 100+ transfers per second.
 
 ## Features
 
@@ -14,6 +14,7 @@ A high-performance REST API service for batching and distributing NEAR Protocol 
 - **Proper nonce management**: Single access key with atomic nonce tracking
 - **Configurable**: All parameters configurable via environment variables
 - **Production-ready**: Built with Rust, Axum, and official NEAR SDK
+- **Internal Service Design**: Optimized to work behind business logic layers for secure linkdrop implementations
 
 ## Architecture
 
@@ -22,6 +23,36 @@ HTTP Request → Validation (Cache) → Batcher Queue → Batched Transaction �
                     ↓                       ↓
           [Account & Storage Check]  [Flush: 500ms OR gas limit OR max size]
 ```
+
+### Intended Use: Internal Linkdrop Service
+
+This service is designed to be an **efficient private internal component** for linkdrop systems, not a public-facing API. It should be deployed behind another service that implements business logic and access controls.
+
+**Recommended Architecture:**
+```
+Public API Service (Rules & Auth) → NEAR FT Transfer Service (This Service) → NEAR RPC
+       ↓                                        ↓
+[Business Rules Validation]              [Efficient Batching]
+- Funding limits (once per account)
+- Time-based restrictions (once per day)
+- NFT/DAO membership verification
+- Captcha/proof-of-humanity
+- Rate limiting per IP/user
+```
+
+**Why This Design:**
+
+- **Separation of Concerns**: Business logic (who can receive tokens) vs. technical optimization (efficient token distribution)
+- **Security**: Internal service with no direct internet exposure reduces attack surface
+- **Flexibility**: Frontend service can implement any validation rules without modifying the transfer logic
+- **Performance**: This service focuses purely on batching and RPC efficiency
+
+**Example Use Cases:**
+- **One-time airdrops**: Frontend validates each account can only claim once
+- **Daily rewards**: Frontend enforces 24-hour cooldowns
+- **Gated drops**: Frontend verifies NFT ownership or DAO membership before allowing claims
+
+The `ENSURE_RECEIVER_ACCOUNT_EXISTS=false` option is particularly useful in this architecture, as the frontend service can perform account validation once during the business logic phase, eliminating redundant RPC calls.
 
 ### Key Mechanisms
 
@@ -101,6 +132,8 @@ cargo run --release --bin server
 ```
 
 The server will start on `http://0.0.0.0:3030` by default.
+
+You can benchmark your server using [near-ft-transfer-service-benchmark](https://github.com/frol/near-ft-transfer-service-benchmark).
 
 ## API Documentation
 
@@ -185,6 +218,14 @@ All configuration is done via environment variables. See `.env.example` for deta
 | Variable            | Description                                  | Default         |
 | ------------------- | -------------------------------------------- | --------------- |
 | `CACHE_TTL_SECONDS` | Cache TTL for validation checks (in seconds) | `1800` (30 min) |
+
+### Account Validation
+
+| Variable                          | Description                                           | Default |
+| --------------------------------- | ----------------------------------------------------- | ------- |
+| `ENSURE_RECEIVER_ACCOUNT_EXISTS`  | Check if receiver account exists before transfer      | `true`  |
+
+**Note:** When using this service as an internal linkdrop component (see [Intended Use](#intended-use-internal-linkdrop-service)), setting `ENSURE_RECEIVER_ACCOUNT_EXISTS=false` eliminates redundant RPC calls since the frontend service typically validates accounts during business logic enforcement.
 
 ### Storage Deposit Behavior
 

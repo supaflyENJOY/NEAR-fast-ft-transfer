@@ -69,27 +69,31 @@ async fn transfer_handler(
 
     let _validation_guard = validation_lock.lock().await;
 
-    let account_exists = match state.cache.get_account_exists(&transfer.receiver_id).await {
-        Some(exists) => exists,
-        None => match state.client_pool.view_account(&transfer.receiver_id).await {
-            Ok(exists) => {
-                state
-                    .cache
-                    .set_account_exists(&transfer.receiver_id, exists)
-                    .await;
-                exists
-            }
-            Err(e) => {
-                error!("Failed to check account existence: {e:?}");
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({
-                        "error": format!("Failed to validate account: {e}")
-                    })),
-                )
-                    .into_response();
-            }
-        },
+    let account_exists = if state.config.ensure_receiver_account_exists {
+        match state.cache.get_account_exists(&transfer.receiver_id).await {
+            Some(exists) => exists,
+            None => match state.client_pool.view_account(&transfer.receiver_id).await {
+                Ok(exists) => {
+                    state
+                        .cache
+                        .set_account_exists(&transfer.receiver_id, exists)
+                        .await;
+                    exists
+                }
+                Err(e) => {
+                    error!("Failed to check account existence: {e:?}");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({
+                            "error": format!("Failed to validate account: {e}")
+                        })),
+                    )
+                        .into_response();
+                }
+            },
+        }
+    } else {
+        true // Skip account existence check when disabled
     };
 
     let has_storage_deposit = match state
@@ -131,7 +135,7 @@ async fn transfer_handler(
 
     drop(_validation_guard);
 
-    if !account_exists {
+    if state.config.ensure_receiver_account_exists && !account_exists {
         warn!(
             "Transfer rejected: account {} does not exist",
             transfer.receiver_id

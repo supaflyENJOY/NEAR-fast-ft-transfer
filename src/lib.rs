@@ -20,6 +20,7 @@ pub struct Config {
     pub max_transaction_gas: u64,
     pub batch_timeout_ms: u64,
     pub cache_ttl_seconds: u64,
+    pub ensure_receiver_account_exists: bool,
     pub auto_storage_deposit: bool,
     pub max_retry_attempts: u8,
     pub api_port: u16,
@@ -59,6 +60,10 @@ impl Config {
             cache_ttl_seconds: env::var("CACHE_TTL_SECONDS")
                 .unwrap_or_else(|_| "1800".to_string())
                 .parse()?,
+            ensure_receiver_account_exists: env::var("ENSURE_RECEIVER_ACCOUNT_EXISTS")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse::<bool>()
+                .unwrap_or(true),
             auto_storage_deposit: env::var("AUTO_STORAGE_DEPOSIT")
                 .unwrap_or_else(|_| "true".to_string())
                 .parse::<bool>()

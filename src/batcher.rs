@@ -24,7 +24,9 @@ pub enum BatchActionType {
         amount: String,
         memo: Option<String>,
     },
-    StorageDeposit { account_id: AccountId },
+    StorageDeposit {
+        account_id: AccountId,
+    },
 }
 
 impl BatchActionType {

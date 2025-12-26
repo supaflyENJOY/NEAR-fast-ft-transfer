@@ -8,7 +8,8 @@ use tokio::time::Duration;
 #[tokio::test]
 async fn test_transfer_without_storage_deposit() -> Result<()> {
     let ctx = common::setup_test_environment().await?;
-    let config = common::create_test_config(&ctx.worker.rpc_addr(), &ctx.relayer, ctx.ft_contract.id())?;
+    let config =
+        common::create_test_config(&ctx.worker.rpc_addr(), &ctx.relayer, ctx.ft_contract.id())?;
 
     let (server_url, _batcher_handle) = common::start_api_server(config).await?;
 
@@ -16,12 +17,16 @@ async fn test_transfer_without_storage_deposit() -> Result<()> {
     let user3 = ctx.worker.dev_create_account().await?;
 
     // Verify user3 has no storage deposit initially
-    let storage_balance = ctx.ft_contract
+    let storage_balance = ctx
+        .ft_contract
         .view("storage_balance_of")
         .args_json(json!({"account_id": user3.id()}))
         .await?
         .json::<Option<serde_json::Value>>()?;
-    assert!(storage_balance.is_none(), "User3 should not have storage deposit initially");
+    assert!(
+        storage_balance.is_none(),
+        "User3 should not have storage deposit initially"
+    );
 
     // Send transfer request - should auto-deposit storage then transfer
     let client = reqwest::Client::new();
@@ -39,7 +44,10 @@ async fn test_transfer_without_storage_deposit() -> Result<()> {
 
     assert_eq!(response.status(), 200);
     let transfer_response: TransferResponse = response.json().await?;
-    eprintln!("Transfer with auto storage deposit: tx_hash={}", transfer_response.tx_hash);
+    eprintln!(
+        "Transfer with auto storage deposit: tx_hash={}",
+        transfer_response.tx_hash
+    );
 
     // Wait for balance to update
     let final_balance = common::wait_for_balance(
@@ -53,12 +61,16 @@ async fn test_transfer_without_storage_deposit() -> Result<()> {
     assert_eq!(final_balance, "1000000000000000000");
 
     // Verify storage deposit was created
-    let storage_balance_after = ctx.ft_contract
+    let storage_balance_after = ctx
+        .ft_contract
         .view("storage_balance_of")
         .args_json(json!({"account_id": user3.id()}))
         .await?
         .json::<Option<serde_json::Value>>()?;
-    assert!(storage_balance_after.is_some(), "User3 should have storage deposit after transfer");
+    assert!(
+        storage_balance_after.is_some(),
+        "User3 should have storage deposit after transfer"
+    );
 
     Ok(())
 }
@@ -81,12 +93,16 @@ async fn test_transfer_without_storage_deposit_disabled() -> Result<()> {
     let user5 = ctx.worker.dev_create_account().await?;
 
     // Verify user5 has no storage deposit initially
-    let storage_balance = ctx.ft_contract
+    let storage_balance = ctx
+        .ft_contract
         .view("storage_balance_of")
         .args_json(json!({"account_id": user5.id()}))
         .await?
         .json::<Option<serde_json::Value>>()?;
-    assert!(storage_balance.is_none(), "User5 should not have storage deposit initially");
+    assert!(
+        storage_balance.is_none(),
+        "User5 should not have storage deposit initially"
+    );
 
     // Send transfer request - should be rejected with 400
     let client = reqwest::Client::new();
@@ -109,20 +125,30 @@ async fn test_transfer_without_storage_deposit_disabled() -> Result<()> {
     let error_msg = error_body["error"].as_str().unwrap();
 
     // Verify error message mentions missing storage deposit
-    assert!(error_msg.contains("does not have storage deposit"),
-        "Error should mention storage deposit: {}", error_msg);
-    assert!(error_msg.contains(user5.id().as_str()),
-        "Error should mention the account: {}", error_msg);
+    assert!(
+        error_msg.contains("does not have storage deposit"),
+        "Error should mention storage deposit: {}",
+        error_msg
+    );
+    assert!(
+        error_msg.contains(user5.id().as_str()),
+        "Error should mention the account: {}",
+        error_msg
+    );
 
     eprintln!("Successfully rejected transfer when auto_storage_deposit=false");
 
     // Verify user5 still has no balance (transfer was rejected)
-    let balance = ctx.ft_contract
+    let balance = ctx
+        .ft_contract
         .view("ft_balance_of")
         .args_json(json!({"account_id": user5.id()}))
         .await?
         .json::<String>()?;
-    assert_eq!(balance, "0", "User5 should have zero balance after rejected transfer");
+    assert_eq!(
+        balance, "0",
+        "User5 should have zero balance after rejected transfer"
+    );
 
     Ok(())
 }
@@ -130,7 +156,8 @@ async fn test_transfer_without_storage_deposit_disabled() -> Result<()> {
 #[tokio::test]
 async fn test_mixed_batch_transfer_and_storage() -> Result<()> {
     let ctx = common::setup_test_environment().await?;
-    let config = common::create_test_config(&ctx.worker.rpc_addr(), &ctx.relayer, ctx.ft_contract.id())?;
+    let config =
+        common::create_test_config(&ctx.worker.rpc_addr(), &ctx.relayer, ctx.ft_contract.id())?;
 
     let (server_url, _batcher_handle) = common::start_api_server(config).await?;
 

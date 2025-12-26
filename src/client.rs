@@ -1,5 +1,16 @@
+//! # NEAR JSON-RPC Client with Automatic Retry Logic
+//!
+//! This module provides a NEAR blockchain client with built-in exponential backoff
+//! retry logic for handling rate limits and transient errors.
+//!
+//! ## Features
+//! - Automatic retry on HTTP 403 (Forbidden) errors
+//! - Automatic retry on HTTP 429 (Too Many Requests) errors
+//! - Automatic retry on "client has exceeded the rate limit" error messages
+//! - Exponential backoff with configurable delays (100ms to 30s)
+
 use anyhow::Result;
-use log::info;
+use log::{info, warn};
 use near_crypto::{InMemorySigner, Signer};
 use near_jsonrpc_client::{
     JsonRpcClient,
@@ -20,7 +31,9 @@ use std::sync::{
     Arc,
     atomic::{AtomicU64, AtomicUsize, Ordering},
 };
+use std::time::Duration;
 use tokio::sync::RwLock;
+use tokio::time::sleep;
 
 use crate::Config;
 
@@ -28,7 +41,6 @@ pub struct Client {
     jsonrpc_client: JsonRpcClient,
     rpc_url: String,
     signer: InMemorySigner,
-    nonce: Arc<AtomicU64>,
     block_hash: Arc<RwLock<CryptoHash>>,
 }
 
@@ -36,20 +48,71 @@ impl Client {
     fn new_with_shared(
         rpc_url: &str,
         signer: InMemorySigner,
-        nonce: Arc<AtomicU64>,
         block_hash: Arc<RwLock<CryptoHash>>,
     ) -> Self {
         Self {
             jsonrpc_client: JsonRpcClient::connect(rpc_url),
             rpc_url: rpc_url.to_string(),
             signer,
-            nonce,
             block_hash,
         }
     }
 
     pub fn rpc_url(&self) -> &str {
         &self.rpc_url
+    }
+
+    /// Make a JSON RPC call with exponential backoff retry logic
+    ///
+    /// This method automatically retries failed requests under the following conditions:
+    /// - HTTP 403 (Forbidden) status codes
+    /// - HTTP 429 (Too Many Requests) status codes
+    /// - Error messages containing "rate limit" or "exceeded the rate limit"
+    /// - Other transient HTTP errors (5xx status codes, connection issues, timeouts)
+    ///
+    /// Retry behavior:
+    /// - Maximum 15 retry attempts
+    /// - Exponential backoff starting at 100ms, capped at 10 seconds
+    /// - Example delays: 100ms, 200ms, 400ms, 800ms, 1600ms, ... doubling each time until
+    ///   reaching 10s, after which all remaining retries use the 10s cap (up to 15 attempts)
+    pub async fn call<M>(
+        &self,
+        method: M,
+    ) -> near_jsonrpc_client::MethodCallResult<M::Response, M::Error>
+    where
+        M: near_jsonrpc_client::methods::RpcMethod,
+    {
+        const MAX_RETRIES: u32 = 15;
+        const BASE_DELAY_MS: u64 = 100;
+        const MAX_DELAY_MS: u64 = 10000; // 10 seconds
+
+        let mut attempt = 0;
+
+        loop {
+            match self.jsonrpc_client.call(&method).await {
+                Ok(response) => return Ok(response),
+                Err(err) if err.handler_error().is_some() => {
+                    return Err(err.into());
+                }
+                Err(err) => {
+                    attempt += 1;
+
+                    if attempt >= MAX_RETRIES {
+                        return Err(err.into());
+                    }
+
+                    let delay_ms =
+                        std::cmp::min(BASE_DELAY_MS * 2_u64.pow(attempt - 1), MAX_DELAY_MS);
+
+                    warn!(
+                        "RPC call failed (attempt {}/{}), retrying in {}ms",
+                        attempt, MAX_RETRIES, delay_ms
+                    );
+
+                    sleep(Duration::from_millis(delay_ms)).await;
+                }
+            }
+        }
     }
 
     async fn get_access_key_query(&self) -> Result<RpcQueryResponse> {
@@ -61,10 +124,7 @@ impl Client {
             },
         };
 
-        self.jsonrpc_client
-            .call(&rpc_request)
-            .await
-            .map_err(Into::into)
+        self.call(rpc_request).await.map_err(Into::into)
     }
 
     /// Check if an account exists on the blockchain
@@ -76,7 +136,7 @@ impl Client {
             },
         };
 
-        match self.jsonrpc_client.call(&rpc_request).await {
+        match self.call(rpc_request).await {
             Ok(_) => Ok(true),
             Err(e) => {
                 let error_str = e.to_string();
@@ -106,7 +166,7 @@ impl Client {
             },
         };
 
-        match self.jsonrpc_client.call(&rpc_request).await {
+        match self.call(rpc_request).await {
             Ok(response) => {
                 let QueryResponseKind::CallResult(result) = response.kind else {
                     anyhow::bail!("Unexpected query response kind");
@@ -152,8 +212,7 @@ impl Client {
                 .sign(&near_crypto::Signer::InMemory(self.signer.clone())),
         };
 
-        let outcome = self.jsonrpc_client.call(request).await?;
-        Ok(outcome)
+        self.call(request).await.map_err(Into::into)
     }
 }
 
@@ -178,9 +237,7 @@ impl ClientPool {
         let clients: Vec<Client> = config
             .rpc_urls
             .iter()
-            .map(|url| {
-                Client::new_with_shared(url, signer.clone(), nonce.clone(), block_hash.clone())
-            })
+            .map(|url| Client::new_with_shared(url, signer.clone(), block_hash.clone()))
             .collect();
 
         info!("Created client pool with {} RPC endpoints", clients.len());

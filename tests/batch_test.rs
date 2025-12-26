@@ -7,7 +7,8 @@ use tokio::time::Duration;
 #[tokio::test]
 async fn test_batch_accumulation() -> Result<()> {
     let ctx = common::setup_test_environment().await?;
-    let config = common::create_test_config(&ctx.worker.rpc_addr(), &ctx.relayer, ctx.ft_contract.id())?;
+    let config =
+        common::create_test_config(&ctx.worker.rpc_addr(), &ctx.relayer, ctx.ft_contract.id())?;
 
     let (server_url, _batcher_handle) = common::start_api_server(config).await?;
 
@@ -114,7 +115,8 @@ async fn test_timeout_batching() -> Result<()> {
 #[tokio::test]
 async fn test_concurrent_transfers_to_different_users() -> Result<()> {
     let ctx = common::setup_test_environment().await?;
-    let config = common::create_test_config(&ctx.worker.rpc_addr(), &ctx.relayer, ctx.ft_contract.id())?;
+    let config =
+        common::create_test_config(&ctx.worker.rpc_addr(), &ctx.relayer, ctx.ft_contract.id())?;
 
     let (server_url, _batcher_handle) = common::start_api_server(config).await?;
 
